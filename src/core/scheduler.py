@@ -5,6 +5,7 @@ from datetime import timedelta, datetime
 from aiogram import Bot
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from pytz import utc
 from pyrogram.types import InputMediaPhoto, InputMediaVideo
 
 from src.models.models import Mailing
@@ -145,10 +146,11 @@ def schedule_mailing_for(mailing: Mailing, scheduler: AsyncIOScheduler, now: dat
             scheduler.add_job(
                 send_mailing,
                 'date',
-                run_date=now,
+                run_date=now + timedelta(seconds=1),
                 args=[mailing.id],
                 id=f"mailing_{mailing.id}_missed",
                 replace_existing=True,
+                misfire_grace_time=300,
             )
             interval_start = now + mailing.period
         else:
@@ -159,10 +161,11 @@ def schedule_mailing_for(mailing: Mailing, scheduler: AsyncIOScheduler, now: dat
         scheduler.add_job(
             send_mailing,
             'date',
-            run_date=now,
+            run_date=now + timedelta(seconds=1),
             args=[mailing.id],
             id=f"mailing_{mailing.id}_first",
             replace_existing=True,
+            misfire_grace_time=300,
         )
         interval_start = now + mailing.period
 
@@ -174,6 +177,8 @@ def schedule_mailing_for(mailing: Mailing, scheduler: AsyncIOScheduler, now: dat
         args=[mailing.id],
         id=f"mailing_{mailing.id}",
         replace_existing=True,
+        coalesce=True,
+        misfire_grace_time=300,
     )
 
 
@@ -187,7 +192,16 @@ def setup_scheduler(userbots, bot: Bot):
     jobstores = {
         'default': SQLAlchemyJobStore(url=config.db.url)
     }
-    scheduler = AsyncIOScheduler(jobstores=jobstores)
+    # Используем таймзону UTC, чтобы избежать несоответствий локального времени
+    # и предупреждений "Run time ... was missed by X" из-за смещения.
+    scheduler = AsyncIOScheduler(
+        jobstores=jobstores,
+        timezone=utc,
+        job_defaults={
+            'coalesce': True,
+            'misfire_grace_time': 300,
+        },
+    )
 
     # Сохраняем рантайм-объекты для send_mailing
     global _runtime_bot, _runtime_userbots

@@ -97,6 +97,7 @@ async def process_mailing_message(message: Message, state: FSMContext, bot: Bot)
     builder = InlineKeyboardBuilder()
     builder.add(InlineKeyboardButton(text="Дни", callback_data="period_unit:days"))
     builder.add(InlineKeyboardButton(text="Часы", callback_data="period_unit:hours"))
+    builder.add(InlineKeyboardButton(text="Секунды", callback_data="period_unit:seconds"))
     await message.answer("Выберите единицу измерения для периода рассылки:", reply_markup=builder.as_markup())
     await state.set_state(CreateMailing.waiting_for_period_unit)
 
@@ -107,8 +108,10 @@ async def process_period_unit(callback_query: CallbackQuery, state: FSMContext):
     await state.update_data(period_unit=unit)
     if unit == "days":
         await callback_query.message.answer("Введите период рассылки в днях:")
-    else:
+    elif unit == "hours":
         await callback_query.message.answer("Введите период рассылки в часах:")
+    else:
+        await callback_query.message.answer("Введите период рассылки в секундах:")
     await state.set_state(CreateMailing.waiting_for_period_value)
 
 
@@ -121,8 +124,10 @@ async def process_period_value(message: Message, state: FSMContext, mailing_serv
 
         if period_unit == "days":
             period = timedelta(days=period_value)
-        else:
+        elif period_unit == "hours":
             period = timedelta(hours=period_value)
+        else:
+            period = timedelta(seconds=period_value)
 
         mailing_info = {
             "name": data['package_name'],
@@ -286,25 +291,57 @@ async def process_delete_photo_finish(callback_query: CallbackQuery, state: FSMC
 
 @admin_router.callback_query(F.data == "edit_period", EditMailing.editing_menu)
 async def process_edit_period_start(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.answer("Введите новый период рассылки в часах:")
+    # Предложим выбрать единицу измерения как при создании
+    builder = InlineKeyboardBuilder()
+    builder.add(InlineKeyboardButton(text="Дни", callback_data="edit_unit:days"))
+    builder.add(InlineKeyboardButton(text="Часы", callback_data="edit_unit:hours"))
+    builder.add(InlineKeyboardButton(text="Секунды", callback_data="edit_unit:seconds"))
+    await callback_query.message.answer(
+        "Выберите единицу измерения для нового периода:",
+        reply_markup=builder.as_markup(),
+    )
     await state.set_state(EditMailing.editing_period)
+
+
+@admin_router.callback_query(F.data.startswith("edit_unit:"), EditMailing.editing_period)
+async def process_edit_period_unit(callback_query: CallbackQuery, state: FSMContext):
+    unit = callback_query.data.split(":")[1]
+    await state.update_data(edit_unit=unit)
+    if unit == "days":
+        await callback_query.message.answer("Введите новый период в днях:")
+    elif unit == "hours":
+        await callback_query.message.answer("Введите новый период в часах:")
+    else:
+        await callback_query.message.answer("Введите новый период в секундах:")
 
 
 @admin_router.message(EditMailing.editing_period)
 async def process_edit_period_finish(message: Message, state: FSMContext, mailing_service: MailingService, scheduler: AsyncIOScheduler):
     try:
-        period_hours = int(message.text)
+        period_value = int(message.text)
         data = await state.get_data()
         mailing_id = data['mailing_id']
+        unit = data.get('edit_unit', 'hours')
 
-        mailing_service.update_mailing(mailing_id, {"period": timedelta(hours=period_hours)})
+        if unit == 'days':
+            new_period = timedelta(days=period_value)
+        elif unit == 'hours':
+            new_period = timedelta(hours=period_value)
+        else:
+            new_period = timedelta(seconds=period_value)
 
-        scheduler.reschedule_job(f"mailing_{mailing_id}", trigger='interval', seconds=timedelta(hours=period_hours).total_seconds())
+        mailing_service.update_mailing(mailing_id, {"period": new_period})
+
+        scheduler.reschedule_job(
+            f"mailing_{mailing_id}",
+            trigger='interval',
+            seconds=new_period.total_seconds(),
+        )
 
         await message.answer("Период рассылки успешно обновлен!")
         await state.clear()
     except ValueError:
-        await message.answer("Неверный формат периода. Пожалуйста, введите количество часов (например: 24).")
+        await message.answer("Неверный формат периода. Пожалуйста, введите целое число.")
     except Exception as e:
         await message.answer(f"Произошла ошибка при обновлении периода: {e}")
         await state.clear()

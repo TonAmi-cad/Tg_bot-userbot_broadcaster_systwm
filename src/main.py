@@ -136,9 +136,12 @@ async def on_startup(bot: Bot, **kwargs):
     for userbot in userbots.values():
         if not userbot.client or not userbot.client.is_connected:
             continue
-        # Диалоги
+        # Диалоги (прогрев peer-кеша). В некоторых версиях Pyrogram get_dialogs
+        # может быть асинхронным генератором. Используем iter_dialogs() как
+        # совместимый способ и читаем хотя бы один элемент.
         try:
-            await userbot.client.get_dialogs()
+            async for _ in userbot.client.iter_dialogs():
+                break
         except Exception as e:
             logging.warning(f"Не удалось получить диалоги для {userbot.account['name']}: {e}")
 
