@@ -25,10 +25,15 @@ class UserbotAccount:
     userbot_account: List[Dict[str, Any]]
 
 @dataclass
+class DebugConfig:
+    debug_flag: bool
+
+@dataclass
 class Config:
     db: DbConfig
     interface_bot: Interface_bot
     userbot_account: UserbotAccount
+    debug: DebugConfig
 
 
 def load_config(path: str = ".env"):
@@ -51,5 +56,8 @@ def load_config(path: str = ".env"):
         ),
         userbot_account=UserbotAccount(
             userbot_account=env.json('USERBOT_ACCOUNT', [])
+        ),
+        debug=DebugConfig(
+            debug_flag=env.bool('DEBUG_FLAG', False)
         )
     )

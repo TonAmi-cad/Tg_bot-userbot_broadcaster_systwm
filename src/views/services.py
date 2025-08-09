@@ -1,4 +1,4 @@
-from src.models.repositories import UserRepository, ManagerUserRepository, PostPlanRepository
+from src.models.repositories.repositories import UserRepository, AdminUserRepository, MailingRepository
 
 
 class UserService:
@@ -21,50 +21,41 @@ class UserService:
         return self.user_repository.delete_by_id(user_id)
 
 
-class ManagerUserService:
-    def __init__(self, manager_user_repository: ManagerUserRepository):
-        self.manager_user_repository = manager_user_repository
+class AdminUserService:
+    def __init__(self, admin_user_repository: AdminUserRepository):
+        self.admin_user_repository = admin_user_repository
 
     def create_user(self, user_info: dict):
-        return self.manager_user_repository.create(data=user_info)
+        return self.admin_user_repository.create(data=user_info)
 
     def get_user(self, user_id):
-        return self.manager_user_repository.read_by_id(user_id)
+        return self.admin_user_repository.read_by_id(user_id)
 
 
-class PostPlanService:
-    def __init__(self, post_plan_repository: PostPlanRepository):
-        self.post_plan_repository = post_plan_repository
+class MailingService:
+    def __init__(self, mailing_repository: MailingRepository):
+        self.mailing_repository = mailing_repository
 
-    def create_post(self, post_info: dict):
-        return self.post_plan_repository.create(data=post_info)
+    def create_mailing(self, mailing_info: dict):
+        return self.mailing_repository.create(data=mailing_info)
 
-    def get_post(self, post_id: int):
-        return self.post_plan_repository.read_by_id(post_id)
+    def get_mailing(self, mailing_id: int):
+        return self.mailing_repository.read_by_id(mailing_id)
+    
+    def get_mailing_by_name(self, name: str):
+        return self.mailing_repository.read_by(name=name)
 
-    def get_post_by_name(self, file_name: str):
-        return self.post_plan_repository.read_by(file_name=file_name)
+    def get_all_mailings(self):
+        return self.mailing_repository.read_all()
+    
+    def get_active_mailings(self):
+        return self.mailing_repository.read_all_by(is_active=True)
 
-    def get_motivational_post(self):
-        return self.post_plan_repository.read_by(motivation=True)
+    def update_mailing(self, mailing_id: int, data: dict):
+        return self.mailing_repository.update(mailing_id, data)
 
-    def get_active_posts(self):
-        return self.post_plan_repository.read_all_by(hide=False, motivation=False)
+    def update_last_mail_date(self, mailing_id: int):
+        return self.mailing_repository.update_last_mail_date(mailing_id)
 
-    def get_all_posts(self):
-        return self.post_plan_repository.read_all()
-
-    def get_all_regular_posts(self):
-        return self.post_plan_repository.get_all_regular_posts()
-
-    def update_period_for_all_motivational(self, period_minutes: int):
-        return self.post_plan_repository.update_period_for_all_motivational(period_minutes)
-
-    def update_period_for_all_regular(self, period_hours: int):
-        return self.post_plan_repository.update_period_for_all_regular(period_hours)
-
-    def update_post(self, post_id: int, data: dict):
-        return self.post_plan_repository.update(post_id, data)
-
-    def delete_post(self, post_id: int):
-        return self.post_plan_repository.delete_by_id(post_id)
+    def delete_mailing(self, mailing_id: int):
+        return self.mailing_repository.delete_by_id(mailing_id)

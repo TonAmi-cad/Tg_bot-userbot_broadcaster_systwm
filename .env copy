@@ -1,0 +1,16 @@
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${DB_HOST}:${DB_PORT}/${POSTGRES_DB}
+
+INTERFACE_BOT_TOKEN=7676433338:AAFS9DKYqWJRBgsHzAO-qyBHYFkXbdQhtjQ
+INTERFACE_BOT_USERNAME="Rewqbnm_bot"
+
+ROOT=[{"name": "TroyBoy", "id": "5060890922"}]
+ADMIN_USERS=[{"name": "TroyBoy", "id": "5060890922"}]
+
+USERBOT_ACCOUNT=[{"name":"TonAmi", "number":"+380674160303", "api_id":"25621862","api_hash":"e6008ced56b1ca1862cfe1051a97d234"},{"name":"Silvia", "number":"+380985201162", "api_id":"25025282","api_hash":"a2d15712a4f25b09fe27c3e084240529"},{"name":"Victoria", "number":"+380977024341", "api_id":"29226652","api_hash":"0e3d857bd0c85ba58422e15f58858ee3"},{"name":"Dima", "number":"+380977490985", "api_id":"29288918","api_hash":"fd164d57b8ba1d6433b24550db3cc02a"}]
+
+DEBUG_FLAG=1

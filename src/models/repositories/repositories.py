@@ -1,5 +1,5 @@
-from src.models.repositories import BaseRepository
-from src.models.models import *
+from src.models.repositories.base_repository import BaseRepository
+from src.models.models import User, AdminUser, Mailing
 from typing import Callable
 from contextlib import AbstractContextManager
 from sqlalchemy.orm import Session
@@ -11,43 +11,22 @@ class UserRepository(BaseRepository):
         super().__init__(session_factory, User)
 
 
-class ManagerUserRepository(BaseRepository):
+class AdminUserRepository(BaseRepository):
     def __init__(self, session_factory: Callable[..., AbstractContextManager[Session]]):
         self.session_factory = session_factory
-        super().__init__(session_factory, ManagerUser)
+        super().__init__(session_factory, AdminUser)
 
 
-class PostPlanRepository(BaseRepository):
+import datetime
+
+
+class MailingRepository(BaseRepository):
     def __init__(self, session_factory: Callable[..., AbstractContextManager[Session]]):
         self.session_factory = session_factory
-        super().__init__(session_factory, PostPlan)
+        super().__init__(session_factory, Mailing)
 
-    def get_all_regular_posts(self):
+    def update_last_mail_date(self, mailing_id: int):
         with self.session_factory() as session:
-            try:
-                return session.query(self.model).filter(self.model.motivation == False).all()
-            except Exception as e:
-                raise e
-
-    def update_period_for_all_motivational(self, period_minutes: int):
-        with self.session_factory() as session:
-            try:
-                session.query(self.model).filter(self.model.motivation == True).update(
-                    {"period_ch": period_minutes}
-                )
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                raise e
-
-    def update_period_for_all_regular(self, period_hours: int):
-        with self.session_factory() as session:
-            try:
-                session.query(self.model).filter(self.model.motivation == False).update(
-                    {"period_ch": period_hours}
-                )
-                session.commit()
-            except Exception as e:
-                session.rollback()
-                raise e
+            session.query(self.model).filter_by(id=mailing_id).update({'last_mail_date': datetime.datetime.utcnow()})
+            session.commit()
 
