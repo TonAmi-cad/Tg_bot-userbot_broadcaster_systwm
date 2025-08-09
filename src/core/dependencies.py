@@ -6,7 +6,7 @@ from src.views.services import UserService, AdminUserService, MailingService
 # Загружаем конфигурацию один раз
 # Указываем путь к файлу конфигурации относительно корня проекта
 import os
-config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env copy")
+config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
 config = load_config(config_path)
 admin_ids = [int(admin['id']) for admin in config.interface_bot.admin]
 
