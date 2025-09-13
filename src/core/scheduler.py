@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import timedelta, datetime
+from pathlib import Path
 
 from aiogram import Bot
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -10,6 +11,7 @@ from pyrogram.types import InputMediaPhoto, InputMediaVideo
 
 from src.models.models import Mailing
 from src.core.dependencies import mailing_service, admin_ids
+from src.utils.paths import get_package_dir
 
 # Рантайм-объекты, устанавливаются из main при старте
 _runtime_bot: Bot | None = None
@@ -39,9 +41,11 @@ async def send_mailing(mailing_id: int):
             await bot.send_message(admin_id, f"❌ Рассылка '{mailing.name}' не удалась. {error_msg}")
         return
 
-    package_path = os.path.join("msg", mailing.name)
+    # Формируем абсолютный путь к папке с медиа
+    package_path = get_package_dir(mailing.name)
+    
     if not os.path.isdir(package_path):
-        logging.error(f"Папка с пакетом рассылки '{mailing.name}' не найдена.")
+        logging.error(f"Папка с пакетом рассылки '{mailing.name}' не найдена по пути {package_path}.")
         return
 
     files = sorted(os.listdir(package_path))

@@ -1,5 +1,5 @@
 from src.core.config import load_config
-from src.models.db.postgres_conn import Database
+from src.models.db import database
 from src.models.repositories.repositories import UserRepository, AdminUserRepository, MailingRepository
 from src.views.services import UserService, AdminUserService, MailingService
 
@@ -10,8 +10,6 @@ config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__fil
 config = load_config(config_path)
 admin_ids = [int(admin['id']) for admin in config.interface_bot.admin]
 
-
-database = Database(db_url=config.db.url)
 
 user_repository = UserRepository(session_factory=database.session)
 user_service = UserService(user_repository=user_repository)

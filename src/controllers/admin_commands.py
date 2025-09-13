@@ -15,6 +15,11 @@ from src.core.states import CreateMailing, EditMailing
 from src.core.userbot import UserBot
 from src.views.services import MailingService
 from src.core.scheduler import send_mailing, schedule_mailing_for
+from src.views.keyboards.admin_keyboard import get_admin_keyboard
+import json
+from src.utils.paths import get_msg_dir, get_package_dir
+
+MSG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "msg")
 
 
 admin_router = Router()
@@ -31,14 +36,28 @@ def get_userbot_keyboard():
 @admin_router.message(Command("start"))
 async def start_handler(message: Message, admin_ids: List[int]):
     if message.from_user.id in admin_ids:
-        await message.answer("Добро пожаловать, администратор!")
+        await message.answer("Добро пожаловать, администратор!", reply_markup=get_admin_keyboard())
     else:
         await message.answer("У вас нет прав доступа.")
 
 
+@admin_router.message(Command("admin"))
+async def admin_handler(message: Message, admin_ids: List[int]):
+    if message.from_user.id in admin_ids:
+        await message.answer("Панель администратора:", reply_markup=get_admin_keyboard())
+    else:
+        await message.answer("У вас нет прав доступа.")
+
+
+@admin_router.callback_query(F.data == "create_mailing")
+async def create_mailing_start_callback(callback_query: CallbackQuery, state: FSMContext):
+    await create_mailing_start(callback_query.message, state)
+
+
 @admin_router.message(Command("create_mailing"))
-async def create_mailing_start(message: Message, state: FSMContext, admin_ids: List[int]):
-    if message.from_user.id not in admin_ids:
+async def create_mailing_start(message: Message, state: FSMContext, admin_ids: List[int] = None):
+    # admin_ids could be None if called from callback
+    if admin_ids is not None and message.from_user.id not in admin_ids:
         await message.answer("У вас нет прав доступа.")
         return
     await message.answer("Введите название пакета рассылки (это будет имя папки в `msg/`):")
@@ -48,7 +67,7 @@ async def create_mailing_start(message: Message, state: FSMContext, admin_ids: L
 @admin_router.message(CreateMailing.waiting_for_package_name)
 async def process_package_name(message: Message, state: FSMContext):
     await state.update_data(package_name=message.text)
-    os.makedirs(os.path.join("msg", message.text), exist_ok=True)
+    os.makedirs(get_package_dir(message.text), exist_ok=True)
     await message.answer("Выберите юзербота для рассылки:", reply_markup=get_userbot_keyboard())
     await state.set_state(CreateMailing.waiting_for_userbot)
 
@@ -79,7 +98,7 @@ async def process_chat_ids(message: Message, state: FSMContext):
 @admin_router.message(CreateMailing.waiting_for_mailing_message, F.text | F.photo)
 async def process_mailing_message(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
-    package_path = os.path.join("msg", data['package_name'])
+    package_path = get_package_dir(data['package_name'])
 
     text = message.text or message.caption
     if text:
@@ -120,7 +139,7 @@ async def process_period_value(message: Message, state: FSMContext, mailing_serv
     try:
         period_value = int(message.text)
         data = await state.get_data()
-        period_unit = data.get("period_unit", "hours") 
+        period_unit = data.get("period_unit", "hours")
 
         if period_unit == "days":
             period = timedelta(days=period_value)
@@ -137,6 +156,18 @@ async def process_period_value(message: Message, state: FSMContext, mailing_serv
         }
         mailing = mailing_service.create_mailing(mailing_info)
 
+        # Сохраняем информацию в channel.json
+        package_path = get_package_dir(data['package_name'])
+        channel_json_path = os.path.join(package_path, "channel.json")
+        channel_data = {
+            "userbot_name": data['userbot_name'],
+            "chat_ids": data['chat_ids'],
+            "period_seconds": period.total_seconds()
+        }
+        with open(channel_json_path, "w", encoding="utf-8") as f:
+            json.dump(channel_data, f, indent=4, ensure_ascii=False)
+
+
         # Немедленный первый запуск и корректный интервал через единую функцию
         schedule_mailing_for(mailing, scheduler, datetime.utcnow())
 
@@ -149,12 +180,83 @@ async def process_period_value(message: Message, state: FSMContext, mailing_serv
         await state.clear()
 
 
+@admin_router.callback_query(F.data == "restore_database")
+async def restore_database_callback(callback_query: CallbackQuery, mailing_service: MailingService, scheduler: AsyncIOScheduler):
+    message = callback_query.message
+    await message.answer("Начинаю восстановление базы данных из `msg/`...")
+
+    msg_dir = get_msg_dir()
+    if not os.path.exists(msg_dir) or not os.path.isdir(msg_dir):
+        await message.answer(f"Директория `{msg_dir}` не найдена.")
+        return
+
+    restored_count = 0
+    errors = []
+
+    for package_name in os.listdir(msg_dir):
+        package_path = os.path.join(msg_dir, package_name)
+        if not os.path.isdir(package_path):
+            continue
+
+        channel_json_path = os.path.join(package_path, "channel.json")
+        if not os.path.exists(channel_json_path):
+            errors.append(f"В папке `{package_name}` отсутствует `channel.json`.")
+            continue
+
+        try:
+            with open(channel_json_path, "r", encoding="utf-8") as f:
+                channel_data = json.load(f)
+
+            period_seconds = channel_data.get("period_seconds")
+            if period_seconds is None:
+                errors.append(f"В `channel.json` для `{package_name}` отсутствует `period_seconds`.")
+                continue
+
+            mailing_info = {
+                "name": package_name,
+                "userbot_name": channel_data["userbot_name"],
+                "chat_ids": channel_data["chat_ids"],
+                "period": timedelta(seconds=period_seconds),
+            }
+
+            # Проверяем, существует ли уже такая рассылка
+            existing_mailing = mailing_service.get_mailing_by_name(package_name)
+            if existing_mailing:
+                mailing_service.update_mailing(existing_mailing.id, mailing_info)
+                mailing = mailing_service.get_mailing(existing_mailing.id)
+            else:
+                mailing = mailing_service.create_mailing(mailing_info)
+
+            # Перепланируем задачу
+            schedule_mailing_for(mailing, scheduler, datetime.utcnow())
+
+            restored_count += 1
+
+        except json.JSONDecodeError:
+            errors.append(f"Неверный формат JSON в `channel.json` для `{package_name}`.")
+        except KeyError as e:
+            errors.append(f"Отсутствует необходимое поле {e} в `channel.json` для `{package_name}`.")
+        except Exception as e:
+            errors.append(f"Неизвестная ошибка при обработке `{package_name}`: {e}")
+
+    result_message = f"✅ Восстановление завершено. Обработано рассылок: {restored_count}."
+    if errors:
+        result_message += "\n\n❌ Обнаружены ошибки:\n" + "\n".join(f"- {error}" for error in errors)
+
+    await message.answer(result_message)
+
+
+@admin_router.callback_query(F.data == "edit_mailing")
+async def edit_mailing_start_callback(callback_query: CallbackQuery, mailing_service: MailingService):
+    await edit_mailing_start(callback_query.message, mailing_service)
+
+
 @admin_router.message(Command("edit_mailing"))
-async def edit_mailing_start(message: Message, mailing_service: MailingService, admin_ids: List[int]):
-    if message.from_user.id not in admin_ids:
+async def edit_mailing_start(message: Message, mailing_service: MailingService, admin_ids: List[int] = None):
+    if admin_ids is not None and message.from_user.id not in admin_ids:
         await message.answer("У вас нет прав доступа.")
         return
-        
+
     mailings = mailing_service.get_all_mailings()
     if not mailings:
         await message.answer("Нет созданных рассылок для редактирования.")
@@ -195,8 +297,8 @@ async def process_edit_text_finish(message: Message, state: FSMContext, mailing_
         data = await state.get_data()
         mailing_id = data['mailing_id']
         mailing = mailing_service.get_mailing(mailing_id)
-        
-        package_path = os.path.join("msg", mailing.name)
+
+        package_path = get_package_dir(mailing.name)
         text_files = [f for f in os.listdir(package_path) if f.lower().endswith('.txt')]
 
         if not text_files:
@@ -226,15 +328,15 @@ async def process_add_photos_finish(message: Message, state: FSMContext, mailing
         data = await state.get_data()
         mailing_id = data['mailing_id']
         mailing = mailing_service.get_mailing(mailing_id)
-        
-        package_path = os.path.join("msg", mailing.name)
-        
+
+        package_path = get_package_dir(mailing.name)
+
         photo = message.photo[-1]
         file_info = await bot.get_file(photo.file_id)
         file_path = file_info.file_path
-        
+
         file_name = f"{photo.file_unique_id}.jpg"
-        
+
         await bot.download_file(file_path, os.path.join(package_path, file_name))
         await message.answer("Фото добавлено.")
 
@@ -253,8 +355,8 @@ async def process_delete_photos_start(callback_query: CallbackQuery, state: FSMC
     data = await state.get_data()
     mailing_id = data['mailing_id']
     mailing = mailing_service.get_mailing(mailing_id)
-    
-    package_path = os.path.join("msg", mailing.name)
+
+    package_path = get_package_dir(mailing.name)
     photos = [f for f in os.listdir(package_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
 
     if not photos:
@@ -266,7 +368,7 @@ async def process_delete_photos_start(callback_query: CallbackQuery, state: FSMC
     for photo in photos:
         builder.add(InlineKeyboardButton(text=photo, callback_data=f"delete_photo:{photo}"))
     builder.adjust(1)
-    
+
     await callback_query.message.answer("Выберите фотографии для удаления:", reply_markup=builder.as_markup())
     await state.set_state(EditMailing.deleting_photos)
 
@@ -278,8 +380,8 @@ async def process_delete_photo_finish(callback_query: CallbackQuery, state: FSMC
         data = await state.get_data()
         mailing_id = data['mailing_id']
         mailing = mailing_service.get_mailing(mailing_id)
-        
-        package_path = os.path.join("msg", mailing.name)
+
+        package_path = get_package_dir(mailing.name)
         os.remove(os.path.join(package_path, photo_name))
 
         await callback_query.message.edit_text(f"Фотография {photo_name} удалена.")

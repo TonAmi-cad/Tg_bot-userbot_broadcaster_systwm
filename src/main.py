@@ -140,8 +140,14 @@ async def on_startup(bot: Bot, **kwargs):
         # может быть асинхронным генератором. Используем iter_dialogs() как
         # совместимый способ и читаем хотя бы один элемент.
         try:
-            async for _ in userbot.client.iter_dialogs():
-                break
+            # Pyrogram v2+ использует get_dialogs
+            if hasattr(userbot.client, "get_dialogs"):
+                async for _ in userbot.client.get_dialogs():
+                    break
+            # Pyrogram v1 использовал iter_dialogs
+            elif hasattr(userbot.client, "iter_dialogs"):
+                async for _ in userbot.client.iter_dialogs():
+                    break
         except Exception as e:
             logging.warning(f"Не удалось получить диалоги для {userbot.account['name']}: {e}")
 

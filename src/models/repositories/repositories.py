@@ -25,6 +25,10 @@ class MailingRepository(BaseRepository):
         self.session_factory = session_factory
         super().__init__(session_factory, Mailing)
 
+    def get_by_name(self, name: str) -> Mailing | None:
+        with self.session_factory() as session:
+            return session.query(self.model).filter_by(name=name).first()
+
     def update_last_mail_date(self, mailing_id: int):
         with self.session_factory() as session:
             session.query(self.model).filter_by(id=mailing_id).update({'last_mail_date': datetime.datetime.utcnow()})
